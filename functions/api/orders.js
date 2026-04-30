@@ -1,121 +1,101 @@
-// functions/api/admin/orders.js
-// GET /api/admin/orders              → listado de órdenes (paginado)
-// GET /api/admin/orders?status=xxx   → filtrado por estado
-// GET /api/admin/orders?q=email      → búsqueda por email/nombre
-// GET /api/admin/orders?page=2       → paginación (20 por página)
+// functions/api/orders.js
+// POST /api/orders → guarda una nueva orden en D1
 // ─────────────────────────────────────────────────
 
-export async function onRequestGet({ request, env }) {
-  if (!isAuthorized(request, env)) {
-    return json({ ok: false, error: 'No autorizado' }, 401);
-  }
-
+export async function onRequestPost({ request, env }) {
   try {
-    const url    = new URL(request.url);
-    const status = url.searchParams.get('status');
-    const q      = url.searchParams.get('q');
-    const page   = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
-    const limit  = 20;
-    const offset = (page - 1) * limit;
+    const body = await request.json();
 
-    // ── Query dinámica ─────────────────────────────
-    let where  = 'WHERE 1=1';
-    const args = [];
-
-    if (status && status !== 'all') {
-      where += ' AND status = ?';
-      args.push(status);
+    // ── Validación básica ──────────────────────────
+    const required = ['nombre','apellido','email','telefono','calle','cp','ciudad','provincia','items'];
+    for (const field of required) {
+      if (!body[field] || (Array.isArray(body[field]) && body[field].length === 0)) {
+        return json({ ok: false, error: `Campo requerido: ${field}` }, 400);
+      }
     }
 
-    if (q) {
-      where += ' AND (email LIKE ? OR nombre LIKE ? OR apellido LIKE ?)';
-      const like = `%${q}%`;
-      args.push(like, like, like);
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      return json({ ok: false, error: 'El carrito está vacío' }, 400);
     }
 
-    // Contar total para paginación
-    const countResult = await env.DB
-      .prepare(`SELECT COUNT(*) as total FROM orders ${where}`)
-      .bind(...args)
-      .first();
-    const total = countResult?.total ?? 0;
+    // ── Calcular totales ───────────────────────────
+    const subtotal   = body.items.reduce((s, i) => s + (i.ars * i.qty), 0);
+    const item_count = body.items.reduce((s, i) => s + i.qty, 0);
 
-    // Traer página
-    const { results } = await env.DB
-      .prepare(
-        `SELECT id, order_date, status, nombre, apellido, email,
-                telefono, ciudad, provincia, subtotal, item_count
-         FROM orders ${where}
-         ORDER BY order_date DESC
-         LIMIT ? OFFSET ?`
-      )
-      .bind(...args, limit, offset)
-      .all();
+    // Sanitizar items: solo guardamos los campos necesarios
+    const items = body.items.map(i => ({
+      id:   i.id,
+      name: i.name,
+      stor: i.stor,
+      ars:  i.ars,
+      qty:  i.qty,
+    }));
+
+    // ── Insertar en D1 ─────────────────────────────
+    const stmt = env.DB.prepare(`
+      INSERT INTO orders
+        (nombre, apellido, email, telefono,
+         calle, cp, ciudad, provincia, notas,
+         subtotal, items_json, item_count, status)
+      VALUES
+        (?, ?, ?, ?,
+         ?, ?, ?, ?, ?,
+         ?, ?, ?, 'pendiente')
+    `);
+
+    const result = await stmt.bind(
+      body.nombre.trim(),
+      body.apellido.trim(),
+      body.email.trim().toLowerCase(),
+      body.telefono.trim(),
+      body.calle.trim(),
+      body.cp.trim(),
+      body.ciudad.trim(),
+      body.provincia,
+      (body.notas || '').trim(),
+      subtotal,
+      JSON.stringify(items),
+      item_count,
+    ).run();
+
+    const orderId = result.meta?.last_row_id;
 
     return json({
-      ok:      true,
-      orders:  results,
-      total,
-      page,
-      pages:   Math.ceil(total / limit),
-    });
+      ok:       true,
+      order_id: orderId,
+      subtotal,
+      message:  '¡Orden registrada! Redirigiendo a MercadoPago…',
+    }, 201);
 
   } catch (err) {
-    console.error('[GET /api/admin/orders]', err);
+    console.error('[POST /api/orders]', err);
     return json({ ok: false, error: err.message }, 500);
   }
 }
 
-// PATCH /api/admin/orders → actualizar status de una orden
-export async function onRequestPatch({ request, env }) {
-  if (!isAuthorized(request, env)) {
-    return json({ ok: false, error: 'No autorizado' }, 401);
-  }
-
-  try {
-    const { id, status } = await request.json();
-    const validStatuses = ['pendiente','pagado','enviado','cancelado'];
-
-    if (!id || !validStatuses.includes(status)) {
-      return json({ ok: false, error: 'Datos inválidos' }, 400);
-    }
-
-    await env.DB
-      .prepare('UPDATE orders SET status = ? WHERE id = ?')
-      .bind(status, id)
-      .run();
-
-    return json({ ok: true, message: `Orden #${id} actualizada a "${status}"` });
-
-  } catch (err) {
-    console.error('[PATCH /api/admin/orders]', err);
-    return json({ ok: false, error: err.message }, 500);
-  }
-}
-
+// OPTIONS para CORS preflight
 export async function onRequestOptions() {
-  return new Response(null, { status: 204, headers: corsHeaders() });
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders(),
+  });
 }
 
 // ── helpers ───────────────────────────────────────
-function isAuthorized(request, env) {
-  const secret = env.ADMIN_SECRET;
-  if (!secret) return false;
-  const auth = request.headers.get('x-admin-secret') || '';
-  return auth === secret;
-}
-
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin':  '*',
-    'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-admin-secret',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
   };
 }
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(),
+    },
   });
 }
