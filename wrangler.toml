@@ -19,7 +19,7 @@ database_id  = "2dfdc1cc-1295-4e51-8233-9d792ecce038"
 
 # ── Variables de entorno ─────────────────────────
 [vars]
-ADMIN_SECRET = "REEMPLAZAR-CON-UNA-CLAVE-SECRETA"   # protege el admin
+ADMIN_SECRET = "iz-admin-2025"   # protege el admin
 STORE_NAME   = "iPhone Zone"
 
 # ── Entorno de preview (desarrollo local) ───────
