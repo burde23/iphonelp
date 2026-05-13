@@ -1627,6 +1627,7 @@ footer{background:#2c2c2e;padding:72px 48px 40px;border-top:1px solid rgba(255,2
   position:fixed;left:0;right:0;bottom:0;z-index:1101;
   top:56px;
   overflow-y:auto;
+  overflow-x:hidden;
   opacity:0;pointer-events:none;
   transform:translateY(18px);
   transition:opacity .4s var(--ease),transform .4s var(--ease);
@@ -1777,6 +1778,36 @@ footer{background:#2c2c2e;padding:72px 48px 40px;border-top:1px solid rgba(255,2
   .pp-price{font-size:28px}
   .pp-stor{font-size:14px;margin-bottom:20px}
   .pp-related{padding:28px 18px 48px}
+}
+
+/* ── Mobile: contención total del panel de producto ── */
+@media(max-width:700px){
+  #prod-panel{overflow-x:hidden}
+
+  /* Share — evita que el URL monospace expanda el layout */
+  .pp-share{flex-wrap:wrap;gap:6px}
+  .pp-share-url{min-width:0;width:100%;order:2;font-size:11px}
+  .pp-btn-copy{order:3;width:100%;text-align:center}
+  .pp-share-label{order:1;width:100%}
+
+  /* Countdown — cabe en pantalla angosta */
+  .pp-cd{padding:14px 12px}
+  .pp-cd-units{flex-wrap:nowrap;width:100%}
+  .pp-cd-unit{flex:1;min-width:0;padding:0 6px}
+  .pp-cd-n{font-size:20px;min-width:0;width:100%}
+
+  /* Features grid — ocupa ancho completo */
+  .pp-features{width:100%}
+
+  /* Modelos chips — se envuelven bien */
+  .pp-modelos-grid{gap:6px}
+  .pp-modelo-chip{font-size:11px;padding:6px 10px}
+
+  /* Botones CTA full width */
+  .pp-btn-add,.pp-btn-store{width:100%;box-sizing:border-box}
+
+  /* Related grid — 2 columnas en mobile */
+  .pp-rel-grid{grid-template-columns:repeat(2,1fr)}
 }
 
 .pp-modelos{margin:0 0 24px}
